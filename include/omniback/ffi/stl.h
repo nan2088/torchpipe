@@ -3,7 +3,6 @@
 #include <tvm/ffi/extra/stl.h>
 #include "omniback/ffi/type_traits.h"
 #include <utility>
-// #include "omniback/ffi/any_wrapper.h"
 
 namespace om::ffi {
 
@@ -33,7 +32,7 @@ struct TypeTraits<std::pair<T1, T2>>
   TVM_FFI_INLINE static void CopyToAnyView(const Self& src, TVMFFIAny* result) {
     auto array = ArrayObj::Empty(2);
     auto dst = array->MutableBegin();
-    // 异常安全：逐元素构造，失败时已构造元素会被 ArrayObj 析构
+    // Exception-safe: element-wise construction, ArrayObj dtor handles already-constructed elements on failure
     ::new (dst) Any(src.first);
     array->size_++;
     ::new (dst + 1) Any(src.second);
@@ -58,7 +57,7 @@ struct TypeTraits<std::pair<T1, T2>>
     try {
       auto array = CopyFromAnyImpl<ArrayObj>(src);
       auto begin = array->MutableBegin();
-      // 严格按顺序转换：first -> T1, second -> T2
+      // Strict order conversion: first -> T1, second -> T2
       T1 first = ConstructFromAny<T1>(begin[0]);
       T2 second = ConstructFromAny<T2>(begin[1]);
       return Self{std::move(first), std::move(second)};

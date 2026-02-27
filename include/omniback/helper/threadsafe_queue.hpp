@@ -60,8 +60,10 @@ class ThreadSafeQueue {
   // }
 
   void push(const std::vector<T>& new_value) {
+    if (new_value.empty()) return;
     {
       std::lock_guard<std::mutex> lk(mut_);
+      data_queue_.reserve(data_queue_.size() + new_value.size());
       for (const auto& item : new_value)
         data_queue_.push(item);
     }
@@ -154,8 +156,9 @@ class ThreadSafeQueue {
   std::vector<T> PopAll() {
     std::unique_lock<std::mutex> lk(mut_);
     std::vector<T> result;
+    result.reserve(data_queue_.size());
     while (!data_queue_.empty()) {
-      result.push_back(data_queue_.front());
+      result.push_back(std::move(data_queue_.front()));
       data_queue_.pop();
     }
     return result;

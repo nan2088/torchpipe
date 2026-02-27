@@ -1,31 +1,48 @@
 [project]
 name = "torchpipe"
-version = "0.1.23"
+version = "0.1.24"
 
 requires-python = ">=3.8"
 description = "Serving inside Pytorch"
 dependencies = [
     "torch",
-    "omniback>=0.1.23a1,<=0.1.23",
+    "omniback>=0.1.24",
     "setuptools",
     "packaging",
     "tqdm",
     "requests",
     "ninja",
     "cmake",
-    "numpy<2",
     "patchelf"
 ]
 
-authors = [{ name = "torchpipe team" }]
+authors = [{ name = "TorchPipe Team" }]
 readme = "README.md"
 license = { text = "Apache-2.0" }
 classifiers = [
     "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
     "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Free Threading :: 2",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+keywords = ["pytorch", "inference", "tensorrt", "deep-learning", "serving"]
+
+[project.urls]
+Homepage = "https://github.com/torchpipe/torchpipe"
+Documentation = "https://torchpipe.github.io/torchpipe/"
+Repository = "https://github.com/torchpipe/torchpipe.git"
+"Bug Tracker" = "https://github.com/torchpipe/torchpipe/issues"
 
 [build-system]
 requires = [
@@ -64,5 +81,4 @@ exclude = [
     "*.so", "*.dll", "*.dylib",
     "lib/*.so",
     "csrc/**/*",
-    "csrc/**/.*"  # 包含隐藏文件（如 .gitignore，可选）
 ]

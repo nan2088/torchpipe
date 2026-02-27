@@ -84,7 +84,7 @@ def test_throughput(model_or_args_dict, num_clients=10, total_number=10000, inpu
 
 def parse_config_arg(arg):
     if ":" in arg:
-        parts = arg.rsplit(":", 1)  # 从右边开始分割，只分割一次
+        parts = arg.rsplit(":", 1)  # Split from right, only once
         if len(parts) == 2:
             key, value = parts
             return key, value
@@ -100,9 +100,9 @@ def test_throughput_from_timm(
     if model_name.endswith(".onnx") or model_name.endswith(".trt"):
         model_path = model_name
     else:
-        assert args.model in timm.list_models()
         import tempfile
         import timm
+        assert model_name in timm.list_models()
 
         model_path = os.path.join(tempfile.gettempdir(), f"{model_name}.onnx")
 

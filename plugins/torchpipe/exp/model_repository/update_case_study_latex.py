@@ -47,7 +47,7 @@ for txt in latexs:
         in_data += " & " + str(int(v["QPS"])) + " "
         in_data += " & " + str(round(v["TP50"], 1)) + " "
         in_data += " & " + str(round(v["TP99"], 1)) + " "
-        in_data += " & " + str((v["GPU Usage"])) + "\% "
+        in_data += " & " + str((v["GPU Usage"])) + r"\% "
         in_data += r"\\"
 
     if not in_data:

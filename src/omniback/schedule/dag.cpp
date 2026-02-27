@@ -180,6 +180,7 @@ void DagDispatcher::on_finish_node(
     std::shared_ptr<Stack> pstack) {
   assert(pstack);
 
+  // Use string_view to avoid copy if possible, or const reference
   std::string node_name =
       any_cast<std::string>(tmp_data->at(TASK_NODE_NAME_KEY));
 
@@ -223,7 +224,7 @@ void DagDispatcher::on_finish_node(
   }
 
   // SPDLOG_DEBUG("processed node_name = {}", node_name);
-  pstack->dag.processed[node_name] = tmp_data;
+  pstack->dag.processed.emplace(node_name, tmp_data);
 
   if (pstack->exception) { // todo check
     if (pstack->dag.waiting_nodes.size() + pstack->dag.processed.size() ==
@@ -265,9 +266,9 @@ void DagDispatcher::on_finish_node(
     // pstack->dag.waiting_nodes.size(),
     //             pstack->dag.total);
 
+    // Must copy because we modify waiting_nodes during iteration
     const auto copy_waiting_nodes = pstack->dag.waiting_nodes;
-    for (const auto& waiting_node :
-         copy_waiting_nodes) { // 同一线程调度，不会出现问题。
+    for (const auto& waiting_node : copy_waiting_nodes) {
       if (pstack->dag.waiting_nodes.count(waiting_node) == 0)
         continue;
 
