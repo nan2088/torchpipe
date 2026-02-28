@@ -13,5 +13,8 @@ dependencies = [
     "requests",
     "ninja",
     "cmake",
-    "patchelf"
+    "patchelf",
 ]
+
+[tool.setuptools]
+packages = ["torchpipe"]

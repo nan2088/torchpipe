@@ -106,7 +106,7 @@ void TensorrtInferTensor::impl_forward(
     const char* name = name_str.c_str();
 
     const nvinfer1::Dims infer_dims_nv = context_->getTensorShape(name);
-    const auto infer_dims = convert_dims(infer_dims_nv);
+    auto infer_dims = convert_dims(infer_dims_nv);
     // static_assert(sizeof(nvinfer1::Dims) == sizeof(NetIOInfo::Dims64));
     if (!match(infer_dims, inputs[j])) {
       // should_change_shape_[j] = true;
