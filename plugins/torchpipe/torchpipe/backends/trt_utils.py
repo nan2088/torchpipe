@@ -41,12 +41,63 @@ except (ImportError, OSError):
 
 
 class TensorRTError(Exception):
-    """Exception for TensorRT-related errors."""
-    pass
+    """
+    Exception for TensorRT-related errors.
+    
+    Attributes:
+        message: Error message
+        context: Additional context information (e.g., tensor name, shape)
+        cause: Original exception that caused this error
+    """
+    
+    def __init__(self, message: str, context: Optional[Dict[str, Any]] = None, cause: Optional[Exception] = None):
+        """
+        Initialize TensorRTError.
+        
+        Args:
+            message: Error message
+            context: Additional context information
+            cause: Original exception that caused this error
+        """
+        self.message = message
+        self.context = context or {}
+        self.cause = cause
+        super().__init__(self._format_message())
+    
+    def _format_message(self) -> str:
+        """Format the error message with context."""
+        parts = [self.message]
+        
+        if self.context:
+            context_str = ", ".join(f"{k}={v}" for k, v in self.context.items())
+            parts.append(f" (context: {context_str})")
+        
+        if self.cause:
+            parts.append(f" (caused by: {type(self.cause).__name__}: {self.cause})")
+        
+        return "".join(parts)
+    
+    def __str__(self) -> str:
+        return self._format_message()
 
 
 class ProfileError(TensorRTError):
     """Exception for Profile-related errors."""
+    pass
+
+
+class EngineError(TensorRTError):
+    """Exception for Engine-related errors."""
+    pass
+
+
+class ContextError(TensorRTError):
+    """Exception for Context-related errors."""
+    pass
+
+
+class InferenceError(TensorRTError):
+    """Exception for Inference-related errors."""
     pass
 
 

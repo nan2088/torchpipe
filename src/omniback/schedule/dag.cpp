@@ -17,7 +17,14 @@ void DagDispatcher::impl_init(
   auto iter = kwargs->find(TASK_CONFIG_KEY);
   OMNI_ASSERT(
       iter != kwargs->end(), "DagDispatcher: config not found in kwargs");
-  str::mapmap dual_config = any_cast<str::mapmap>(iter->second);
+  
+  str::mapmap dual_config;
+  if (auto value = iter->second.try_cast<str::mapmap>()) {
+    dual_config = value.value();
+  } else {
+    SPDLOG_ERROR("DagDispatcher: config is not a valid str::mapmap type");
+    OMNI_FATAL_ASSERT(false, "DagDispatcher: config type mismatch");
+  }
 
   // per-node settings
   for (const auto& item : dual_config) {

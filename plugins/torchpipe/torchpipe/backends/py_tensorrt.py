@@ -60,6 +60,9 @@ from .base import BackendBase, BackendMeta, register_backend
 from .trt_utils import (
     TensorRTError,
     ProfileError,
+    EngineError,
+    ContextError,
+    InferenceError,
     DataType,
     Dims64,
     NetIOInfo,
@@ -364,21 +367,66 @@ class PyTensorrtEngine:
         # Align to 4 bytes
         num_elements = (size + 3) // 4
         return torch.empty(num_elements, dtype=torch.int32, device='cuda')
+    
+    def release(self) -> None:
+        """
+        Release all resources held by this engine.
+        
+        This method is thread-safe and can be called multiple times.
+        After calling this method, the engine cannot be used for inference.
+        """
+        with self._lock:
+            # Release all contexts
+            self._contexts.clear()
+            
+            # Release device memory
+            self._device_memory.clear()
+            self._mem_size = 0
+            
+            # Release engine and runtime
+            self._engine = None
+            self._runtime = None
+            self._io_info = None
+            
+            logger.debug("PyTensorrtEngine resources released")
+    
+    def __del__(self):
+        """Destructor to ensure resources are released."""
+        try:
+            self.release()
+        except Exception:
+            pass
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.release()
+        return False
 
 
 class PyTensorrtInferTensor(BackendBase):
     """
     TensorRT inference backend implemented in Python.
-    
+
     This class provides TensorRT inference capability with support for:
     - Multiple optimization profiles
     - Dynamic shapes
     - CUDA stream synchronization
     - Zero-copy tensor operations via DLPack
     - tvm_ffi integration
-    
+
     Compatible with TensorRT 9.3 and TensorRT >= 10. Minimum version: TensorRT 9.3.
-    
+
+    Threading Model:
+        Each backend instance is NOT thread-safe and should be used by a single
+        thread only. For concurrent execution, use the multi-instance pattern:
+        set instance_num > 1 to create multiple backend instances, each with its
+        own TensorRT execution context. The framework will assign one instance
+        per thread.
+
     Example:
         >>> backend = PyTensorrtInferTensor()
         >>> config = {
@@ -387,7 +435,7 @@ class PyTensorrtInferTensor(BackendBase):
         ...     "instance_num": "1",
         ... }
         >>> backend.init(config)
-        >>> 
+        >>>
         >>> input_tensor = torch.randn(1, 3, 224, 224, device='cuda')
         >>> io_dict = {"data": input_tensor}
         >>> backend.forward([io_dict])
@@ -397,7 +445,7 @@ class PyTensorrtInferTensor(BackendBase):
     def __init__(self):
         """Initialize the backend."""
         super().__init__()
-        
+
         self._engine: Optional[PyTensorrtEngine] = None
         self._context: Optional[trt.IExecutionContext] = None
         self._instance_index: int = 0
@@ -407,7 +455,7 @@ class PyTensorrtInferTensor(BackendBase):
         self._device_memory: Optional[torch.Tensor] = None
         self._mem_size: int = 0
         self._use_user_managed_mem: bool = False
-        
+
         # Check TensorRT version for user-managed memory support
         if _tensorrt_available:
             trt_version = trt.__version__.split('.')
@@ -601,43 +649,48 @@ class PyTensorrtInferTensor(BackendBase):
     def forward(self, ios: List[Any]) -> None:
         """
         Execute inference.
-        
+
         Args:
             ios: List of omniback.Dict objects containing input data.
                  Each dict should have:
                  - 'data': input tensor(s) - can be torch.Tensor or DLPack-compatible
                  - 'output' (optional): pre-allocated output tensor(s)
                  After execution, 'result' key will contain the output.
+
+        Warning:
+            This method is NOT thread-safe. Each backend instance should be used
+            by a single thread only. For concurrent execution, create multiple
+            backend instances (one per thread) using the instance_num parameter.
         """
         if self._context is None:
             raise TensorRTError("Backend not initialized")
-        
+
         if len(ios) != 1:
             raise TensorRTError("Only support one (batched) input with explicit batch")
-        
+
         io_dict = ios[0]
-        
+
         # Process inputs
         inputs = self._get_inputs(io_dict)
-        
+
         # Set input shapes and tensors
         self._set_input_shapes(inputs)
         self._set_input_tensors(inputs)
-        
+
         # Prepare outputs
         outputs = self._prepare_outputs(io_dict)
         self._set_output_tensors(outputs)
-        
+
         # Update device memory if needed
         if self._mem_size == 0:
             self._update_device_memory()
-        
+
         # Execute inference
         self._execute()
-        
+
         # Set results
         self._set_result(io_dict, outputs)
-        
+
         logger.debug("Forward completed successfully")
     
     def _get_inputs(self, io_dict: Any) -> List[torch.Tensor]:
@@ -910,6 +963,37 @@ class PyTensorrtInferTensor(BackendBase):
             return 1
         min_dims = self._io_info[0][0].min
         return int(min_dims.d[0]) if min_dims.nbDims > 0 else 1
+    
+    def release(self) -> None:
+        """
+        Release all resources held by this backend.
+        
+        This method releases the TensorRT context and device memory.
+        After calling this method, the backend cannot be used for inference.
+        """
+        # Release context
+        self._context = None
+        
+        # Release device memory
+        self._device_memory = None
+        self._mem_size = 0
+        
+        # Release event
+        self._input_finish_event = None
+        
+        # Note: We don't release the engine here because it may be shared
+        # with other backends. The engine should be released separately.
+        
+        self._initialized = False
+        
+        logger.debug("PyTensorrtInferTensor resources released")
+    
+    def __del__(self):
+        """Destructor to ensure resources are released."""
+        try:
+            self.release()
+        except Exception:
+            pass
 
 
 # Register the backend

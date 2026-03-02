@@ -335,13 +335,13 @@ class PyStreamPool(BackendBase):
             
             stream_event.event.record(original_stream)
             
-            with CUDAStreamManager.get_current_stream() as current:
-                current.wait_event(stream_event.event)
+            with torch.cuda.stream(stream_event.stream):
+                stream_event.stream.wait_event(stream_event.event)
                 
                 if self._dep is not None:
                     self._dep.forward(ios)
                 
-                stream_event.event.record(current)
+                stream_event.event.record(stream_event.stream)
             
             original_stream.wait_event(stream_event.event)
     

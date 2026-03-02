@@ -81,7 +81,7 @@ print("Backend initialized with FP16 mode")
 
 # Step 4: Benchmark inference
 print("\nBenchmarking FP16 inference:")
-batch_sizes = [1, 4, 8, 16]
+batch_sizes = [1, 4, 8]
 
 for batch_size in batch_sizes:
     input_tensor = torch.randn((batch_size, 3, 224, 224), dtype=torch.float16, device='cuda')

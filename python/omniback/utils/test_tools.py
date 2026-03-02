@@ -202,10 +202,10 @@ def test_from_raw_file(forward_function, file_dir, num_clients=10, request_batch
         futures = []
         for i in range(num_clients):
             batch_data = data[i::num_clients]
-            futures.append(executor.run_batch(forward_function[i], batch_data))
+            futures.append(executor.submit(run_batch, forward_function[i], batch_data))
 
         for f in futures:
-            list_latency.extend(f)
+            list_latency.extend(f.result())
 
     list_latency.sort()
     length = len(list_latency)
