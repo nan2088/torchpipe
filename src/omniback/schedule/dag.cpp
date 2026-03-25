@@ -1,5 +1,7 @@
 #include "omniback/schedule/dag.hpp"
 
+#include <random>
+
 #include "omniback/core/helper.hpp"
 #include "omniback/core/reflect.h"
 #include "omniback/core/task_keys.hpp"
@@ -8,6 +10,8 @@
 #include "omniback/helper/string.hpp"
 #include "omniback/helper/threadsafe_queue.hpp"
 #include "omniback/helper/timer.hpp"
+
+#include <tvm/ffi/extra/stl.h>
 
 namespace om {
 void DagDispatcher::impl_init(
@@ -64,7 +68,10 @@ void DagDispatcher::impl_init(
 }
 
 void DagDispatcher::evented_forward(const std::vector<dict>& inputs) {
-  const size_t queue_index = std::rand() % task_queues_.size();
+  // Use thread-safe random number generation
+  thread_local std::mt19937 gen(std::random_device{}());
+  std::uniform_int_distribution<size_t> dist(0, task_queues_.size() - 1);
+  const size_t queue_index = dist(gen);
 
   for (auto& item : inputs) {
     OMNI_FATAL_ASSERT(item->find(TASK_STACK_KEY) == item->end());

@@ -8,8 +8,9 @@ which are essential for asynchronous GPU computation and stream synchronization.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from contextlib import contextmanager
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Deque
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -302,32 +303,34 @@ class StreamPool:
         
         if num_streams <= 0 or num_streams > 32:
             raise ValueError("num_streams must be between 1 and 32")
-        
+
         self._num_streams = num_streams
         self._device = device
         self._streams: List[StreamWithEvent] = []
-        self._available: List[int] = list(range(num_streams))
+        # Use deque for O(1) popleft() instead of list.pop(0) which is O(n)
+        self._available: Deque[int] = deque(range(num_streams))
         self._in_use: set = set()
-        
+
         for _ in range(num_streams):
             stream = CUDAStreamManager.get_stream_from_pool(high_priority, device)
             event = CUDAStreamManager.create_event()
             self._streams.append(StreamWithEvent(stream, event))
-    
+
     def acquire(self) -> Tuple[int, StreamWithEvent]:
         """
         Acquire a stream from the pool.
-        
+
         Returns:
             Tuple of (stream_index, StreamWithEvent)
-            
+
         Raises:
             CUDAStreamError: If no streams are available
         """
         if not self._available:
             raise CUDAStreamError("No streams available in pool")
-        
-        index = self._available.pop(0)
+
+        # Use popleft() for O(1) operation instead of pop(0) which is O(n)
+        index = self._available.popleft()
         self._in_use.add(index)
         return index, self._streams[index]
     

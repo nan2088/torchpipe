@@ -237,17 +237,29 @@ def torch_dtype_to_datatype(torch_dtype: 'torch.dtype') -> DataType:
     return TORCH_DTYPE_TO_DATATYPE.get(torch_dtype, DataType.UNKNOWN)
 
 
+# Module-level cached logger instance for better performance
+_cached_trt_logger: Optional['trt.Logger'] = None
+
+
 def get_trt_logger() -> 'trt.Logger':
     """
     Get or create a TensorRT logger.
-    
+
+    This function caches the logger instance at module level to avoid
+    repeated creation overhead.
+
     Returns:
         TensorRT Logger instance
     """
+    global _cached_trt_logger
+
     if not _tensorrt_available:
         raise TensorRTError("TensorRT not available")
-    
-    return trt.Logger(trt.Logger.WARNING)
+
+    if _cached_trt_logger is None:
+        _cached_trt_logger = trt.Logger(trt.Logger.WARNING)
+
+    return _cached_trt_logger
 
 
 def load_engine_from_file(
