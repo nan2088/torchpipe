@@ -8,30 +8,24 @@ import shutil
 import subprocess
 import urllib.request
 from io import BytesIO
-from typing import Callable, Tuple, Optional
+from typing import Callable, Tuple, Optional, List, Union, Any
 import numpy as np
-from typing import List, Union, Callable, Tuple, Any
 
 try:
     import cv2
 except ImportError:
     pass
-    # print("OpenCV not found. Please install it to use this feature.")
 
 import torch
 import torch.nn as nn
 try:
     from torchvision import transforms
     from PIL import Image
-except Exception as e:
+except Exception:
     pass
-    # print(
-    #     f"Torchvision not found. Please install it to use this feature. e = {e}")
 
 import tempfile
 import logging
-import importlib
-import subprocess
 
 
 # TEST_IMAGES = [
@@ -97,7 +91,7 @@ def get_max_supported_onnx_opset():
     torch_version = torch.__version__.split('+')[0]  # Remove possible CUDA suffix
     major, minor = map(int, torch_version.split('.')[:2])
 
-    if (major == 1 and minor >= 1.12) or major >= 2:
+    if (major == 1 and minor >= 12) or major >= 2:
         return 17
     else:
         return 11
@@ -1046,19 +1040,6 @@ class ClassifyModelTester:
         if callable_func:
             compare_classification(all_result)
         return all_result
-
-
-def test_from_raw_file(
-    forward_function:  Callable[[List[tuple[str, bytes]]], Any],
-    file_dir: str,
-    num_clients=10,
-    request_batch=1,
-    total_number=10000,
-    num_preload=1000,
-    recursive=True,
-    ext=[".jpg", ".JPG", ".jpeg", ".JPEG"],
-):
-    pass
 
 
 if __name__ == "__main__":

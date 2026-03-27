@@ -250,6 +250,10 @@ void Batching::run(size_t max_bs) {
           helper::timestamp());
       if (new_pop + cached_size > 0) {
         if (!try_forward(cached_data, new_pop + cached_size, 1)) {
+          // Check shutdown flag before waiting to avoid deadlock
+          if (!bInited_.load()) {
+            break;
+          }
           instances_state_->wait_for(new_pop + cached_size, SHUTDOWN_TIMEOUT);
           continue;
         } else {

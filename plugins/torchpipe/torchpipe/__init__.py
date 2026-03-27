@@ -196,4 +196,6 @@ try:
 except NameError:
     pass  # Some variables may not be defined if loading failed
 
-__all__ = ["pipe", "Dict", "register", "set_fast_dlpack", "__version__"]
+from . import backends
+
+__all__ = ["pipe", "Dict", "register", "set_fast_dlpack", "__version__", "backends"]

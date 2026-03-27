@@ -126,9 +126,9 @@ def get_cv_include_lib_dir():
     # from cache
     OPENCV_INCLUDE = OPENCV_LIB = None
     cache_header = os.path.join(get_cache_dir(), f"opencv/abiflag{abiflag}/include/opencv4/")
-    cache_lib = os.path.join(get_cache_dir(), "opencv/abiflag{abiflag}/lib/")
+    cache_lib = os.path.join(get_cache_dir(), f"opencv/abiflag{abiflag}/lib/")
     possible_header_dirs = [cache_header]
-    possible_lib_dirs = [cache_lib] +[os.path.join(get_cache_dir(), "opencv/abiflag{abiflag}/lib64/")]
+    possible_lib_dirs = [cache_lib] +[os.path.join(get_cache_dir(), f"opencv/abiflag{abiflag}/lib64/")]
     for item in possible_header_dirs:
         if os.path.exists(os.path.join(item, "opencv2/core.hpp")):
             OPENCV_INCLUDE = item

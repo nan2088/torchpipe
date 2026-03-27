@@ -1,5 +1,7 @@
 #include "omniback/schedule/dag.hpp"
 
+#include <random>
+
 #include "omniback/core/helper.hpp"
 #include "omniback/core/reflect.h"
 #include "omniback/core/task_keys.hpp"
@@ -9,6 +11,8 @@
 #include "omniback/helper/threadsafe_queue.hpp"
 #include "omniback/helper/timer.hpp"
 
+#include <tvm/ffi/extra/stl.h>
+
 namespace om {
 void DagDispatcher::impl_init(
     const std::unordered_map<std::string, std::string>& config,
@@ -17,7 +21,14 @@ void DagDispatcher::impl_init(
   auto iter = kwargs->find(TASK_CONFIG_KEY);
   OMNI_ASSERT(
       iter != kwargs->end(), "DagDispatcher: config not found in kwargs");
-  str::mapmap dual_config = any_cast<str::mapmap>(iter->second);
+  
+  str::mapmap dual_config;
+  if (auto value = iter->second.try_cast<str::mapmap>()) {
+    dual_config = value.value();
+  } else {
+    SPDLOG_ERROR("DagDispatcher: config is not a valid str::mapmap type");
+    OMNI_FATAL_ASSERT(false, "DagDispatcher: config type mismatch");
+  }
 
   // per-node settings
   for (const auto& item : dual_config) {
@@ -57,7 +68,10 @@ void DagDispatcher::impl_init(
 }
 
 void DagDispatcher::evented_forward(const std::vector<dict>& inputs) {
-  const size_t queue_index = std::rand() % task_queues_.size();
+  // Use thread-safe random number generation
+  thread_local std::mt19937 gen(std::random_device{}());
+  std::uniform_int_distribution<size_t> dist(0, task_queues_.size() - 1);
+  const size_t queue_index = dist(gen);
 
   for (auto& item : inputs) {
     OMNI_FATAL_ASSERT(item->find(TASK_STACK_KEY) == item->end());

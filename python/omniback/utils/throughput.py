@@ -111,8 +111,9 @@ def test_throughput_from_timm(
         ).eval()
 
         # step 1: convert to onnx
+        import torchpipe
         torchpipe.utils.models.onnx_export(
-            resnet101, model_path, torch.randn(1, 3, 224, 224))
+            model_eval, model_path, torch.randn(1, 3, 224, 224))
 
     config_dict["model"] = model_path
 

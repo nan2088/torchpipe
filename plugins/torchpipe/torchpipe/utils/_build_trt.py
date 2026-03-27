@@ -257,20 +257,41 @@ def _build_trt(csrc_dir, skip_download=True):
             env={**os.environ, "EXAMPLE_ENV": "1"},
         )
     else:
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "omniback.utils.build_lib",
-                "--source-dirs",
-                os.path.join(csrc_dir, "csrc/tensorrt_torch/"),
-                "--include-dirs",
-                os.path.join(csrc_dir, "csrc/"),
-                "--build-with-cuda",
-                f"--ldflags=-lnvinfer -lnvonnxparser -lnvinfer_plugin",
-                "--name",
-                "torchpipe_tensorrt"
-            ],
-            check=True,
-            env={**os.environ, "EXAMPLE_ENV": "1"},
-        )
+        trt_inc, trt_lib = get_trt_include_lib_dir()
+        if trt_inc and trt_lib:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "omniback.utils.build_lib",
+                    "--source-dirs",
+                    os.path.join(csrc_dir, "csrc/tensorrt_torch/"),
+                    "--include-dirs",
+                    os.path.join(csrc_dir, "csrc/"),
+                    trt_inc,
+                    "--build-with-cuda",
+                    f"--ldflags=-L{trt_lib} -Wl,-rpath,{trt_lib} -lnvinfer -lnvonnxparser -lnvinfer_plugin",
+                    "--name",
+                    "torchpipe_tensorrt"
+                ],
+                check=True,
+                env={**os.environ, "EXAMPLE_ENV": "1"},
+            )
+        else:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "omniback.utils.build_lib",
+                    "--source-dirs",
+                    os.path.join(csrc_dir, "csrc/tensorrt_torch/"),
+                    "--include-dirs",
+                    os.path.join(csrc_dir, "csrc/"),
+                    "--build-with-cuda",
+                    f"--ldflags=-lnvinfer -lnvonnxparser -lnvinfer_plugin",
+                    "--name",
+                    "torchpipe_tensorrt"
+                ],
+                check=True,
+                env={**os.environ, "EXAMPLE_ENV": "1"},
+            )

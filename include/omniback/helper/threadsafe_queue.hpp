@@ -63,7 +63,8 @@ class ThreadSafeQueue {
     if (new_value.empty()) return;
     {
       std::lock_guard<std::mutex> lk(mut_);
-      data_queue_.reserve(data_queue_.size() + new_value.size());
+      // Note: std::queue doesn't have reserve() method
+      // The underlying container will grow automatically as needed
       for (const auto& item : new_value)
         data_queue_.push(item);
     }
