@@ -1,2 +1,0 @@
-python generate_throughput.py
-python throughput_plot.py

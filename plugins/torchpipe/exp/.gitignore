@@ -1,9 +1,0 @@
-*.onnx
-*.trt
-**/*.plan
-**/*.csv
-*.csv
-*.png
-*.pdf
-*.log
-model.plan
