@@ -31,7 +31,7 @@ src/orchid/llmscheduler/plugins/csrc/*.dll
 src/orchid/llmscheduler/plugins/csrc/*.o
 src/orchid/llmscheduler/plugins/csrc/*.a
 
-# Local benchmark / test outputs
+# Local benchmark / test outputs, including EvalScope outputs and compare reports
 benchmarks/artifacts/*
 !benchmarks/artifacts/.gitignore
 tests/artifacts/*

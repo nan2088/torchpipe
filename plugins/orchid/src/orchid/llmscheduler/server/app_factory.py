@@ -95,6 +95,42 @@ def _message_text(m: ChatCompletionMessage) -> str:
     return ""
 
 
+def _decode_token_chunk(tokenizer, token_ids: list[int]) -> str:
+    if not token_ids:
+        return ""
+    f = getattr(tokenizer, "batch_decode", None)
+    if callable(f):
+        try:
+            decoded = f(
+                [list(int(t) for t in token_ids)],
+                skip_special_tokens=False,
+                clean_up_tokenization_spaces=False,
+            )
+            if decoded:
+                return str(decoded[0])
+        except TypeError:
+            try:
+                decoded = f([list(int(t) for t in token_ids)])
+                if decoded:
+                    return str(decoded[0])
+            except Exception:
+                pass
+        except Exception:
+            pass
+    g = getattr(tokenizer, "decode", None)
+    if callable(g):
+        try:
+            return str(g(list(int(t) for t in token_ids), skip_special_tokens=False, clean_up_tokenization_spaces=False))
+        except TypeError:
+            try:
+                return str(g(list(int(t) for t in token_ids)))
+            except Exception:
+                pass
+        except Exception:
+            pass
+    return ""
+
+
 def create_app(config: ServerConfig) -> FastAPI:
     app = FastAPI()
 
@@ -264,7 +300,7 @@ def create_app(config: ServerConfig) -> FastAPI:
                 input_ids = np.array(tokenizer.encode(prompt), dtype=np.int64)
         max_tokens = request.max_tokens or request.max_completion_tokens or 128
         trace_id = str(uuid.uuid4())
-        want_text = bool(request.stream) or (not bool(request.skip_detokenize))
+        want_text = (not bool(request.stream)) and (not bool(request.skip_detokenize))
         queue = await engine.submit(input_ids, max_tokens, want_text=want_text)
         if log_req:
             print(
@@ -273,14 +309,36 @@ def create_app(config: ServerConfig) -> FastAPI:
             )
 
         if request.stream:
+            try:
+                stream_flush_tokens = int(os.environ.get("LLMSCHEDULER_STREAM_FLUSH_TOKENS", "1"))
+            except Exception:
+                stream_flush_tokens = 1
+            stream_flush_tokens = max(1, int(stream_flush_tokens))
+
             async def event_generator():
                 had_error = False
                 completion_tokens = 0
+                buffered_token_ids: list[int] = []
+
+                def flush_buffer() -> str:
+                    nonlocal buffered_token_ids
+                    text = _decode_token_chunk(tokenizer, buffered_token_ids)
+                    buffered_token_ids = []
+                    return text
+
                 while True:
-                    output = await queue.async_q.get()
+                    output = await queue.get()
                     if output is None:
                         break
                     if isinstance(output, dict) and output.get("error"):
+                        token_text = flush_buffer()
+                        if token_text:
+                            yield "data: " + _json_dumps(
+                                {
+                                    "model": request.model,
+                                    "choices": [{"index": 0, "delta": {"content": token_text}, "finish_reason": None}],
+                                }
+                            ) + "\n\n"
                         had_error = True
                         if log_req:
                             dt = time.perf_counter() - t0
@@ -300,9 +358,21 @@ def create_app(config: ServerConfig) -> FastAPI:
                         )
                         yield f"data: {_model_json(chunk)}\n\n"
                         break
-
-                    token_text = output["text"]
                     completion_tokens += 1
+                    buffered_token_ids.append(int(output.get("token_id", 0)))
+                    if len(buffered_token_ids) < stream_flush_tokens and not bool(output.get("finished")):
+                        continue
+                    token_text = flush_buffer()
+                    if token_text:
+                        yield "data: " + _json_dumps(
+                            {
+                                "model": request.model,
+                                "choices": [{"index": 0, "delta": {"content": token_text}, "finish_reason": None}],
+                            }
+                        ) + "\n\n"
+
+                token_text = flush_buffer()
+                if token_text:
                     yield "data: " + _json_dumps(
                         {
                             "model": request.model,
@@ -343,10 +413,9 @@ def create_app(config: ServerConfig) -> FastAPI:
 
         generated_text = ""
         generated_token_ids = []
-        generated_text_parts: list[str] = []
         completion_tokens = 0
         while True:
-            output = await queue.async_q.get()
+            output = await queue.get()
             if output is None:
                 break
             if isinstance(output, dict) and output.get("error"):
@@ -360,15 +429,13 @@ def create_app(config: ServerConfig) -> FastAPI:
             if bool(request.skip_detokenize):
                 generated_token_ids.append(int(output.get("token_id", 0)))
             else:
-                generated_text_parts.append(str(output["text"]))
+                generated_text += str(output.get("text", ""))
             completion_tokens += 1
         if bool(request.skip_detokenize):
             try:
                 generated_text = str(tokenizer.decode(list(generated_token_ids)))
             except Exception:
                 generated_text = ""
-        else:
-            generated_text = "".join(generated_text_parts)
         if log_req:
             dt = time.perf_counter() - t0
             print(

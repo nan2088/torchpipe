@@ -11,6 +11,7 @@
 - 本轮新增了一轮 fresh 正确性验证和一轮 fresh 在线压测；但 `run_simple_suite.py` 在同进程同时拉起 vLLM 与 TRT 路径时仍会因为显存竞争 OOM。
 - `run_gap_sharegpt.py` 在当前内收后的 server 路径上可以跑通，但 vLLM bench 给出的 `conc=10` fresh 指标出现明显异常值，因此本轮不把这组 fresh gap 数据升级为新的正式基线。
 - `benchmarks/artifacts/` 默认按本地结果目录管理；即使原始产物不随仓库交付，这份文档里的表格仍应视为当前正式口径。
+- 本轮补充了一套 EvalScope 在线回归，用来稳定复现 streaming 路径；这套结果当前作为 streaming 对比与回归口径。
 
 ## 当前正式性能结论
 
@@ -28,10 +29,33 @@
 ## 当前正确性与结构验证
 
 - `pytest plugins/orchid/tests/test_api_server_inprocess.py plugins/orchid/tests/test_schedule_step_plan.py plugins/orchid/tests/test_page_manager_free.py -q` 已通过。
-- `python plugins/orchid/scripts/verify_trt.py --model ... --tokenizer ... --engine ... --prompt ...` 已重新跑通，且修复了逐 token 文本拼接导致的乱码问题。
+- `python plugins/orchid/scripts/verify_trt.py --model ... --tokenizer ... --engine ... --prompt ...` 已重新跑通；当前仍把它视为最小 TRT 通路验证，而不是最终文本质量结论。
 - `python plugins/orchid/benchmarks/run_gap_sharegpt.py --dry-run ...` 已通过，默认 server-app 已切到 `orchid.llmscheduler.server.api_server:app`。
 - `LLMSCHEDULER_TEST_MODE=1` 下，`orchid.llmscheduler.server.api_server` 能构造本地 FastAPI app。
-- `orchid.llmscheduler.server.api_server:app` 已收到一条真实 `/v1/chat/completions` 请求，返回中文结果语义正常。
+- `orchid.llmscheduler.server.api_server:app` 已收到一条真实 `/v1/chat/completions` 请求，返回中文约束性结果，说明在线 chat 路径能正常走通。
+- `pytest plugins/orchid/tests/test_api_server_inprocess.py -q` 现在同时覆盖了 `/health`、非 streaming `/v1/chat/completions` 与 streaming SSE 基本输出。
+
+## 当前 EvalScope online 结果
+
+来源：`benchmarks/artifacts/evalscope_perf/compare_standard_streamopt4_20260330/compare_summary.md`
+
+| 场景 | orchid req/s | vLLM req/s | req ratio | orchid tok/s | vLLM tok/s | tok ratio | orchid TTFT | vLLM TTFT |
+| - | -: | -: | -: | -: | -: | -: | -: | -: |
+| openqa_stream | 10.83 | 12.09 | 0.8958 | 1386.25 | 1547.98 | 0.8955 | 0.008 | 0.011 |
+| random_long | 10.29 | 9.71 | 1.0597 | 1317.58 | 1243.12 | 1.0599 | 0.077 | 0.090 |
+| random_short | 27.21 | 28.39 | 0.9584 | 1741.41 | 1816.64 | 0.9586 | 0.040 | 0.032 |
+
+来源：`benchmarks/artifacts/evalscope_perf/compare_full_streamopt4_20260330/compare_summary.md`
+
+| 场景 | orchid req/s | vLLM req/s | req ratio | orchid tok/s | vLLM tok/s | tok ratio | orchid TTFT | vLLM TTFT |
+| - | -: | -: | -: | -: | -: | -: | -: | -: |
+| openqa_stream | 21.06 | 23.38 | 0.9008 | 2695.92 | 2992.54 | 0.9009 | 0.011 | 0.012 |
+| random_long | 15.69 | 11.67 | 1.3445 | 2008.40 | 1493.17 | 1.3451 | 0.092 | 0.199 |
+| random_short | 41.19 | 41.94 | 0.9821 | 2636.24 | 2684.17 | 0.9821 | 0.053 | 0.054 |
+
+- 这组结果说明：orchid 在 `random_long` 上已经能追平或超过 vLLM，但在 `openqa_stream` 上仍落后。
+- 当前 `openqa_stream` 的主要短板更像 streaming serving 路径，而不是基础 TRT 或长输入 KV 预算本身。
+- 本轮已把 engine 内逐 token detokenize 改成 API 层增量解码，并把结果通道从 `janus.Queue` 改成 `asyncio.Queue + loop.call_soon_threadsafe`；优化后 `openqa_stream` 在 `standard/full` 下都提升到了约 `0.90x vLLM`。
 
 ## 本轮保留的复验结果
 
@@ -103,10 +127,13 @@
 - 把 `revalidated_*` 结果当作当前目录里的补充复验证据。
 - 把 `fresh_random2` 当作当前结构内收后的 fresh 在线冒烟结果。
 - 当前若要产出新的正式 ShareGPT 主对比，需要先修正 `run_gap_sharegpt.py` 在 vLLM bench 下的 streaming 统计异常，再重新跑 `1,4,8,10` 全量结果。
+- 当前若要做稳定的 streaming 回归或 orchid/vLLM 在线双边对比，优先用 EvalScope，而不是只依赖 `run_gap_sharegpt.py`。
 
 ## 复现实验入口
 
 - `python plugins/orchid/benchmarks/run_gap_sharegpt.py --server-app orchid.llmscheduler.server.api_server:app ...`
 - `python plugins/orchid/benchmarks/run_final_vllm_bench_sharegpt.py --server-app orchid.llmscheduler.server.api_server:app ...`
 - `python plugins/orchid/benchmarks/run_simple_suite.py ...`
-
+- `python plugins/orchid/benchmarks/run_evalscope_perf.py --suite standard --spawn-orchid-target orchid --orchid-max-pages 32768 --orchid-kv-cache-reserved-mb 4096`
+- `python plugins/orchid/benchmarks/run_evalscope_perf.py --suite smoke --spawn-vllm-target vllm --vllm-gpu-mem 0.18`
+- `python plugins/orchid/benchmarks/run_evalscope_perf.py --merge-meta <orchid-meta.json> --merge-meta <vllm-meta.json> --out-dir <compare-dir>`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import queue as pyqueue
 from typing import Any, AsyncIterator, Optional
@@ -15,7 +16,7 @@ class OfflineEngine:
         self.engine = engine
         self.ctx = ctx
         self.request_queue: janus.Queue = janus.Queue()
-        self.results_queues: dict[int, janus.Queue] = {}
+        self.results_queues: dict[int, tuple[asyncio.Queue, asyncio.AbstractEventLoop]] = {}
         self.running = False
         self.thread: Optional[threading.Thread] = None
         self._next_req_id = 1
@@ -41,19 +42,20 @@ class OfflineEngine:
     
     def _cleanup_failed_reqs(self, req_ids: list[int], err: str) -> None:
         for req_id in req_ids:
-            q = self.results_queues.get(int(req_id))
-            if q is None:
+            item = self.results_queues.get(int(req_id))
+            if item is None:
                 continue
-            q.sync_q.put({"req_id": int(req_id), "error": str(err), "finished": True})
-            q.sync_q.put(None)
+            q, loop = item
+            loop.call_soon_threadsafe(q.put_nowait, {"req_id": int(req_id), "error": str(err), "finished": True})
+            loop.call_soon_threadsafe(q.put_nowait, None)
             try:
                 del self.results_queues[int(req_id)]
             except Exception:
                 pass
 
-    def _fail_req(self, req_id: int, q: janus.Queue, err: str) -> None:
-        q.sync_q.put({"req_id": int(req_id), "error": str(err), "finished": True})
-        q.sync_q.put(None)
+    def _fail_req(self, req_id: int, q: asyncio.Queue, loop: asyncio.AbstractEventLoop, err: str) -> None:
+        loop.call_soon_threadsafe(q.put_nowait, {"req_id": int(req_id), "error": str(err), "finished": True})
+        loop.call_soon_threadsafe(q.put_nowait, None)
 
     def _reset_engine_state(self) -> None:
         try:
@@ -104,12 +106,13 @@ class OfflineEngine:
                 input_ids = req_data["input_ids"]
                 max_tokens = int(req_data["max_tokens"])
                 out_q = req_data["queue"]
+                out_loop = req_data["loop"]
                 want_text = bool(req_data.get("want_text", True))
                 try:
                     self.engine.add_request(req_id, input_ids, max_tokens, want_text=want_text)
-                    self.results_queues[req_id] = out_q
+                    self.results_queues[req_id] = (out_q, out_loop)
                 except Exception as e:
-                    self._fail_req(req_id, out_q, str(e))
+                    self._fail_req(req_id, out_q, out_loop, str(e))
                 drained += 1
 
             if not self.engine.running_queue and drained == 0:
@@ -119,12 +122,13 @@ class OfflineEngine:
                     input_ids = req_data["input_ids"]
                     max_tokens = int(req_data["max_tokens"])
                     out_q = req_data["queue"]
+                    out_loop = req_data["loop"]
                     want_text = bool(req_data.get("want_text", True))
                     try:
                         self.engine.add_request(req_id, input_ids, max_tokens, want_text=want_text)
-                        self.results_queues[req_id] = out_q
+                        self.results_queues[req_id] = (out_q, out_loop)
                     except Exception as e:
-                        self._fail_req(req_id, out_q, str(e))
+                        self._fail_req(req_id, out_q, out_loop, str(e))
                 except (pyqueue.Empty, janus.SyncQueueEmpty):
                     pass
 
@@ -165,29 +169,38 @@ class OfflineEngine:
             if step_outputs:
                 for out in step_outputs:
                     req_id = int(out["req_id"])
-                    q = self.results_queues.get(req_id)
-                    if q is None:
+                    item = self.results_queues.get(req_id)
+                    if item is None:
                         continue
-                    q.sync_q.put(out)
+                    q, loop = item
+                    loop.call_soon_threadsafe(q.put_nowait, out)
                     if out["finished"]:
-                        q.sync_q.put(None)
+                        loop.call_soon_threadsafe(q.put_nowait, None)
                         del self.results_queues[req_id]
 
-    async def add_request(self, req_id: int, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> janus.Queue:
-        q: janus.Queue = janus.Queue()
+    async def add_request(self, req_id: int, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
         await self.request_queue.async_q.put(
-            {"req_id": int(req_id), "input_ids": input_ids, "max_tokens": int(max_tokens), "queue": q, "want_text": bool(want_text)}
+            {
+                "req_id": int(req_id),
+                "input_ids": input_ids,
+                "max_tokens": int(max_tokens),
+                "queue": q,
+                "loop": loop,
+                "want_text": bool(want_text),
+            }
         )
         return q
 
-    async def submit(self, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> janus.Queue:
+    async def submit(self, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> asyncio.Queue:
         return await self.add_request(self._alloc_req_id(), input_ids, max_tokens, want_text=want_text)
 
     async def generate(self, input_ids: Any, max_tokens: int) -> str:
         q = await self.submit(input_ids, max_tokens)
         out = ""
         while True:
-            item = await q.async_q.get()
+            item = await q.get()
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):
@@ -198,7 +211,7 @@ class OfflineEngine:
     async def stream(self, input_ids: Any, max_tokens: int) -> AsyncIterator[dict[str, Any]]:
         q = await self.submit(input_ids, max_tokens)
         while True:
-            item = await q.async_q.get()
+            item = await q.get()
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):
@@ -264,10 +277,10 @@ class TensorRTOfflineEngine:
         except Exception:
             pass
 
-    async def add_request(self, req_id: int, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> janus.Queue:
+    async def add_request(self, req_id: int, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> asyncio.Queue:
         return await self._runner.add_request(req_id, input_ids, max_tokens, want_text=want_text)
 
-    async def submit(self, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> janus.Queue:
+    async def submit(self, input_ids: Any, max_tokens: int, *, want_text: bool = True) -> asyncio.Queue:
         return await self._runner.submit(input_ids, max_tokens, want_text=want_text)
 
     async def generate(self, input_ids: Any, max_tokens: int) -> str:

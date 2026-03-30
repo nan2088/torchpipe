@@ -1,6 +1,6 @@
 # orchid 插件整理说明
 
-这个目录现在按现代 Python 项目方式组织：
+项目组织：
 - `pyproject.toml`：项目元数据、依赖和打包入口。
 - `src/orchid/`：正式 Python 包根。
 - `src/orchid/llmscheduler/`：已经内收到 orchid 目录中的高性能 serving 基础模块，用来消除对外部 `llmscheduler` 源码目录的依赖。
@@ -21,6 +21,7 @@
 2. `docs/model_export.md`
 3. `docs/performance.md`
 4. `benchmarks/README.md`
+5. `benchmarks/evalscope.md`
 
 ## 当前命名约定
 
@@ -43,7 +44,8 @@
 
 ## 当前结论
 
-- 交接同事建议先看 `docs/handoff.md`，里面汇总了入口、安装方式、验证命令和当前已知问题。
+- 建议先看 `docs/handoff.md`，里面汇总了入口、安装方式、验证命令和当前已知问题。
 - 第一阶段模型导出与最小验证入口见 `docs/model_export.md`。
 - 当前正式性能结论见 `docs/performance.md`。
+- 当前最完整的在线回归与双边对比入口见 `benchmarks/run_evalscope_perf.py` 与 `benchmarks/evalscope.md`。
 - 旧版长报告已归档到 `research/archive/final_report_legacy.md`。

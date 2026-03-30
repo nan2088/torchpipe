@@ -4,8 +4,8 @@ from orchid.llmscheduler.server.config import ServerConfig
 from orchid.llmscheduler.server.app_factory import create_app
 
 
-def test_chat_completions_test_mode():
-    config = ServerConfig(
+def _test_config() -> ServerConfig:
+    return ServerConfig(
         host="127.0.0.1",
         port=0,
         test_mode=True,
@@ -20,7 +20,10 @@ def test_chat_completions_test_mode():
         page_size=16,
         max_pages=None,
     )
-    app = create_app(config)
+
+
+def test_chat_completions_test_mode():
+    app = create_app(_test_config())
     client = TestClient(app)
     r = client.get("/health")
     assert r.status_code == 200
@@ -32,3 +35,15 @@ def test_chat_completions_test_mode():
     j = r.json()
     assert j["choices"][0]["message"]["content"] == "ok"
 
+
+def test_chat_completions_stream_test_mode():
+    app = create_app(_test_config())
+    client = TestClient(app)
+    body = {"model": "x", "messages": [{"role": "user", "content": "hi"}], "stream": True, "max_tokens": 4}
+    with client.stream("POST", "/v1/chat/completions", json=body) as r:
+        assert r.status_code == 200
+        chunks = [line for line in r.iter_lines() if line]
+    assert chunks[0].startswith("data: ")
+    assert '"content":"ok"' in chunks[0]
+    assert '"finish_reason":"stop"' in chunks[1]
+    assert chunks[-1] == "data: [DONE]"

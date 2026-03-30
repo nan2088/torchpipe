@@ -27,7 +27,7 @@ async def _run(args):
         out_ids = []
         steps = 0
         while True:
-            item = await q.async_q.get()
+            item = await q.get()
             if item is None:
                 break
             if isinstance(item, dict) and item.get("error"):

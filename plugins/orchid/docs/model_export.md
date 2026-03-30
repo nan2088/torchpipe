@@ -73,7 +73,7 @@ python plugins/orchid/scripts/verify_trt.py \
 pytest plugins/orchid/tests/test_api_server_inprocess.py -q
 ```
 
-这个用例会直接构造 FastAPI 应用并验证 `/health` 与 `/v1/chat/completions`。
+这个用例会直接构造 FastAPI 应用并验证 `/health`、非 streaming `/v1/chat/completions` 与 streaming SSE 基本输出。
 
 ## 5. 高性能在线入口
 
@@ -84,6 +84,7 @@ pytest plugins/orchid/tests/test_api_server_inprocess.py -q
 
 - 简单吞吐对比：`python plugins/orchid/benchmarks/run_simple_suite.py ...`
 - ShareGPT 对比：`python plugins/orchid/benchmarks/run_gap_sharegpt.py ...`
+- EvalScope 在线回归：`python plugins/orchid/benchmarks/run_evalscope_perf.py ...`
 - 已整理的结果说明：见 `docs/performance.md`
 
 ## 7. 其他模型

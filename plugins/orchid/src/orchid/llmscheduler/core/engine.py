@@ -142,8 +142,10 @@ class ContinuousBatchingEngine:
         return np.array(x, dtype=np.int64)
     
     def _cap_tokens_per_req(self, ctx: AttentionContext) -> int:
-        num_layers = int(getattr(ctx, "num_layers", 1) or 1)
-        pages_budget = int(self.max_pages) // max(1, num_layers)
+        pages_budget = int(getattr(ctx, "pages_per_layer", 0) or 0)
+        if pages_budget <= 0:
+            num_layers = int(getattr(ctx, "num_layers", 1) or 1)
+            pages_budget = int(self.max_pages) // max(1, num_layers)
         pages_budget = int(max(0, pages_budget))
         if pages_budget <= 0:
             return 0
@@ -212,7 +214,10 @@ class ContinuousBatchingEngine:
     
     def _ensure_free_pages(self, ctx: AttentionContext, needed_pages: int, *, avoid_req_id: int | None = None) -> bool:
         needed_pages = int(needed_pages)
-        if int(self.used_pages) + needed_pages <= int(self.max_pages):
+        pages_budget = int(getattr(ctx, "pages_per_layer", 0) or 0)
+        if pages_budget <= 0:
+            pages_budget = int(self.max_pages)
+        if int(self.used_pages) + needed_pages <= int(pages_budget):
             return True
         
         candidates = []
@@ -229,13 +234,13 @@ class ContinuousBatchingEngine:
         
         freed = 0
         for pages, rid in candidates:
-            if int(self.used_pages) + needed_pages <= int(self.max_pages):
+            if int(self.used_pages) + needed_pages <= int(pages_budget):
                 return True
             freed += int(self._pause_req(ctx, rid))
             if freed >= needed_pages:
                 break
         
-        return bool(int(self.used_pages) + needed_pages <= int(self.max_pages))
+        return bool(int(self.used_pages) + needed_pages <= int(pages_budget))
 
     def add_request(self, req_id, input_ids, max_tokens, *, want_text: bool = True):
         ids = self._as_np_int64(input_ids)
@@ -284,7 +289,9 @@ class ContinuousBatchingEngine:
             ctx._prof["attn_dtype_out"] = -1.0
             t_step0 = time.perf_counter()
 
-        max_pages = int(self.max_pages)
+        max_pages = int(getattr(ctx, "pages_per_layer", 0) or 0)
+        if max_pages <= 0:
+            max_pages = int(self.max_pages)
         page_size = int(self.page_size)
         pages_budget_per_layer = int(max_pages)
         cap_tokens = int(self._cap_tokens_per_req(ctx))
